@@ -8,6 +8,19 @@ import { CHAPTERS } from './chapters.js'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
 
+// Wings Airways seaplane — downtown Juneau to Taku Lodge
+const SEAPLANE_ROUTE_COORDS = [
+  [-134.419, 58.301], // Wings Airways seaplane base, downtown Juneau
+  [-134.30,  58.320], // over Gastineau Channel / icefield edge
+  [-134.15,  58.360], // approaching Taku Glacier
+  [-134.01,  58.390], // Taku Lodge on the Taku River
+]
+
+const SEAPLANE_ROUTE_GEOJSON = {
+  type: 'Feature',
+  geometry: { type: 'LineString', coordinates: SEAPLANE_ROUTE_COORDS },
+}
+
 // Alaska Marine Highway route — Bellingham to Juneau via Inside Passage
 const FERRY_ROUTE_COORDS = [
   [-122.48, 48.75], // Bellingham
@@ -274,6 +287,7 @@ export default function App() {
   const mapRef = useRef(null)
   const isReturningRef = useRef(false)
   const tracerAnimRef = useRef(null)
+  const seaplaneAnimRef = useRef(null)
   const [tabsVisible, setTabsVisible] = useState(true)
 
   useEffect(() => {
@@ -327,6 +341,43 @@ export default function App() {
     tracerAnimRef.current = requestAnimationFrame(animate)
     return () => {
       if (tracerAnimRef.current) cancelAnimationFrame(tracerAnimRef.current)
+    }
+  }, [activeChapterId])
+
+  // Tron tracer animation for the seaplane chapter
+  useEffect(() => {
+    if (activeChapterId !== 'taku-feast') {
+      if (seaplaneAnimRef.current) {
+        cancelAnimationFrame(seaplaneAnimRef.current)
+        seaplaneAnimRef.current = null
+      }
+      return
+    }
+
+    // Short 30-mile hop: 3500ms travel + 600ms pause per loop
+    const TRAVEL = 3500
+    const PAUSE = 600
+    const CYCLE = TRAVEL + PAUSE
+    const startTime = performance.now()
+
+    const animate = (now) => {
+      const elapsed = (now - startTime) % CYCLE
+      const raw = Math.min(elapsed / TRAVEL, 1)
+      const t = raw < 0.5 ? 2 * raw * raw : -1 + (4 - 2 * raw) * raw
+      const coord = interpolateAlongLine(SEAPLANE_ROUTE_COORDS, t)
+
+      const map = mapRef.current?.getMap()
+      const src = map?.getSource('seaplane-point')
+      if (src) {
+        src.setData({ type: 'Feature', geometry: { type: 'Point', coordinates: coord } })
+      }
+
+      seaplaneAnimRef.current = requestAnimationFrame(animate)
+    }
+
+    seaplaneAnimRef.current = requestAnimationFrame(animate)
+    return () => {
+      if (seaplaneAnimRef.current) cancelAnimationFrame(seaplaneAnimRef.current)
     }
   }, [activeChapterId])
 
@@ -476,6 +527,71 @@ export default function App() {
             </>
           )}
 
+          {activeChapterId === 'taku-feast' && (
+            <>
+              {/* Seaplane Tron glow track — amber/gold */}
+              <Source id="seaplane-route" type="geojson" data={SEAPLANE_ROUTE_GEOJSON}>
+                <Layer
+                  id="seaplane-glow-outer"
+                  type="line"
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  paint={{ 'line-width': 28, 'line-color': '#f59e0b', 'line-opacity': 0.07, 'line-blur': 14 }}
+                />
+                <Layer
+                  id="seaplane-glow-mid"
+                  type="line"
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  paint={{ 'line-width': 12, 'line-color': '#f59e0b', 'line-opacity': 0.2, 'line-blur': 5 }}
+                />
+                <Layer
+                  id="seaplane-glow-inner"
+                  type="line"
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  paint={{ 'line-width': 5, 'line-color': '#fbbf24', 'line-opacity': 0.65 }}
+                />
+                <Layer
+                  id="seaplane-core"
+                  type="line"
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  paint={{ 'line-width': 1.5, 'line-color': '#fef3c7', 'line-opacity': 0.95 }}
+                />
+              </Source>
+              {/* Moving seaplane point */}
+              <Source
+                id="seaplane-point"
+                type="geojson"
+                data={{ type: 'Feature', geometry: { type: 'Point', coordinates: SEAPLANE_ROUTE_COORDS[0] } }}
+              >
+                <Layer
+                  id="seaplane-pt-halo-3"
+                  type="circle"
+                  paint={{ 'circle-radius': 28, 'circle-color': '#f59e0b', 'circle-opacity': 0.07, 'circle-blur': 1 }}
+                />
+                <Layer
+                  id="seaplane-pt-halo-2"
+                  type="circle"
+                  paint={{ 'circle-radius': 14, 'circle-color': '#fbbf24', 'circle-opacity': 0.25 }}
+                />
+                <Layer
+                  id="seaplane-pt-halo-1"
+                  type="circle"
+                  paint={{ 'circle-radius': 8, 'circle-color': '#f59e0b', 'circle-opacity': 0.55 }}
+                />
+                <Layer
+                  id="seaplane-pt-core"
+                  type="circle"
+                  paint={{
+                    'circle-radius': 5,
+                    'circle-color': '#ffffff',
+                    'circle-opacity': 1,
+                    'circle-stroke-width': 2.5,
+                    'circle-stroke-color': '#f59e0b',
+                  }}
+                />
+              </Source>
+            </>
+          )}
+
           {CHAPTERS.filter(c => c.marker).map(chapter => {
             const Icon = chapter.icon
             const isActive = activeChapterId === chapter.id
@@ -489,12 +605,15 @@ export default function App() {
                 <div
                   className="flex items-center justify-center w-9 h-9 rounded-full shadow-lg"
                   style={{
-                    backgroundColor: chapter.color ?? '#1e40af',
+                    backgroundColor: chapter.markerEmoji ? 'rgba(255,255,255,0.92)' : (chapter.color ?? '#1e40af'),
                     transform: isActive ? 'scale(1.3)' : 'scale(1)',
                     transition: 'transform 0.3s ease',
                   }}
                 >
-                  {Icon && <Icon size={17} color="white" strokeWidth={2.5} />}
+                  {chapter.markerEmoji
+                    ? <span style={{ fontSize: 20, lineHeight: 1 }}>{chapter.markerEmoji}</span>
+                    : Icon && <Icon size={17} color="white" strokeWidth={2.5} />
+                  }
                 </div>
               </Marker>
             )

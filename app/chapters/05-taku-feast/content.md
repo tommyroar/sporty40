@@ -14,6 +14,7 @@ mapState:
 marker:
   longitude: -134.01
   latitude: 58.39
+markerEmoji: "✈️"
 mapStates:
   - longitude: -134.30
     latitude: 58.35
