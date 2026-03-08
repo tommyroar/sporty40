@@ -183,7 +183,12 @@ function ChapterCard({ chapter }) {
         <ReactMarkdown components={MD_COMPONENTS}>{chapter.content}</ReactMarkdown>
       </div>
       {chapter.photos?.length === 1 && (
-        <img src={chapter.photos[0].src} alt={chapter.photos[0].alt ?? ''} className="mt-4 w-full rounded-xl object-cover" />
+        <figure className="mt-4">
+          <img src={chapter.photos[0].src} alt={chapter.photos[0].alt ?? ''} className="w-full rounded-xl object-cover" />
+          {chapter.photos[0].alt && (
+            <figcaption className="mt-1.5 text-xs text-gray-400 text-center">{chapter.photos[0].alt}</figcaption>
+          )}
+        </figure>
       )}
       {chapter.photos?.length > 1 && <PhotoSlider photos={chapter.photos} />}
     </motion.div>

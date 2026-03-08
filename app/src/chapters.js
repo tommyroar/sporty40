@@ -1,6 +1,6 @@
-import { Navigation, MapPin, Mountain, Waves, Utensils, Camera, Tent, Bike, Plane, Star, Home } from 'lucide-react'
+import { Navigation, MapPin, Mountain, Waves, Utensils, Camera, Tent, Bike, Plane, Star, Home, Car } from 'lucide-react'
 
-const ICON_MAP = { Navigation, MapPin, Mountain, Waves, Utensils, Camera, Tent, Bike, Plane, Star, Home }
+const ICON_MAP = { Navigation, MapPin, Mountain, Waves, Utensils, Camera, Tent, Bike, Plane, Star, Home, Car }
 
 const modules = import.meta.glob('../chapters/*/content.md', { eager: true })
 const photoModules = import.meta.glob('../chapters/**/*.{jpg,jpeg,png,webp}', { eager: true, query: '?url', import: 'default' })
