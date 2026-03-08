@@ -5,6 +5,25 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Sporty 40</title>
+    <script>
+      (function () {
+        var SECRET = '3jv532WgHhtB'
+        var COOKIE = 'sporty40_auth'
+        function hasCookie() {
+          return document.cookie.split(';').some(function (c) { return c.trim().startsWith(COOKIE + '=') })
+        }
+        var params = new URLSearchParams(location.search)
+        if (params.get('key') === SECRET) {
+          document.cookie = COOKIE + '=1; path=/; max-age=' + 60 * 60 * 24 * 90 + '; SameSite=Strict'
+          params.delete('key')
+          var qs = params.toString()
+          history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash)
+          window.__AUTH_OK = true
+        } else {
+          window.__AUTH_OK = hasCookie()
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>
