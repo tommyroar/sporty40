@@ -1,0 +1,514 @@
+import { useState, useCallback, useRef, useEffect } from 'react'
+import Map, { Marker, Source, Layer } from 'react-map-gl/mapbox'
+import { Scrollama, Step } from 'react-scrollama'
+import { motion, AnimatePresence } from 'framer-motion'
+import ReactMarkdown from 'react-markdown'
+import { ArrowUp, ChevronLeft, ChevronRight, ChevronsLeftRight } from 'lucide-react'
+import { CHAPTERS } from './chapters.js'
+
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
+
+// Alaska Marine Highway route — Bellingham to Juneau via Inside Passage
+const FERRY_ROUTE_COORDS = [
+  [-122.48, 48.75], // Bellingham
+  [-124.00, 49.10], // Strait of Georgia
+  [-125.24, 50.02], // Campbell River area
+  [-127.49, 50.97], // North tip of Vancouver Island
+  [-128.50, 52.00], // Queen Charlotte Sound crossing
+  [-130.32, 54.32], // Chatham Sound / Prince Rupert
+  [-131.65, 55.34], // Ketchikan
+  [-132.38, 56.47], // Wrangell
+  [-132.96, 56.81], // Petersburg
+  [-134.42, 58.30], // Juneau
+]
+
+const FERRY_ROUTE_GEOJSON = {
+  type: 'Feature',
+  geometry: { type: 'LineString', coordinates: FERRY_ROUTE_COORDS },
+}
+
+// Interpolate a point at progress t (0–1) along a coordinate array
+function interpolateAlongLine(coords, t) {
+  if (t <= 0) return coords[0]
+  if (t >= 1) return coords[coords.length - 1]
+  const dists = []
+  let total = 0
+  for (let i = 1; i < coords.length; i++) {
+    const dx = coords[i][0] - coords[i - 1][0]
+    const dy = coords[i][1] - coords[i - 1][1]
+    dists.push(Math.sqrt(dx * dx + dy * dy))
+    total += dists[dists.length - 1]
+  }
+  let rem = t * total
+  for (let i = 0; i < dists.length; i++) {
+    if (rem <= dists[i]) {
+      const s = rem / dists[i]
+      return [
+        coords[i][0] + s * (coords[i + 1][0] - coords[i][0]),
+        coords[i][1] + s * (coords[i + 1][1] - coords[i][1]),
+      ]
+    }
+    rem -= dists[i]
+  }
+  return coords[coords.length - 1]
+}
+
+const MD_COMPONENTS = {
+  a: ({ href, children }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline hover:text-blue-800">
+      {children}
+    </a>
+  ),
+}
+
+function IntroCard({ chapter }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{ duration: 0.5, ease: 'easeOut' }}
+      className="bg-white/90 backdrop-blur-md rounded-2xl shadow-xl p-8 border border-white/60 max-w-md w-full"
+    >
+      <h1 className="text-3xl font-bold mb-4 text-gray-900">
+        {chapter.title}
+      </h1>
+      <div className="text-gray-700 leading-relaxed prose max-w-none">
+        <ReactMarkdown components={MD_COMPONENTS}>{chapter.content}</ReactMarkdown>
+      </div>
+      <p className="mt-5 text-xs text-gray-400 font-medium tracking-wide">Scroll to explore ↓</p>
+    </motion.div>
+  )
+}
+
+function PhotoSlider({ photos }) {
+  const [pairIdx, setPairIdx] = useState(0)
+  const [pos, setPos] = useState(50)
+  const containerRef = useRef(null)
+  const dragging = useRef(false)
+  const pairCount = photos.length - 1
+
+  const front = photos[pairIdx]
+  const back = photos[pairIdx + 1]
+
+  const updatePos = useCallback((clientX) => {
+    if (!containerRef.current) return
+    const rect = containerRef.current.getBoundingClientRect()
+    setPos(Math.max(2, Math.min(98, ((clientX - rect.left) / rect.width) * 100)))
+  }, [])
+
+  useEffect(() => {
+    const onMove = (e) => { if (dragging.current) updatePos(e.clientX) }
+    const onUp = () => { dragging.current = false }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+  }, [updatePos])
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const onTouchMove = (e) => { if (dragging.current) { e.preventDefault(); updatePos(e.touches[0].clientX) } }
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
+    return () => el.removeEventListener('touchmove', onTouchMove)
+  }, [updatePos])
+
+  const goTo = (i) => { setPairIdx(i); setPos(50) }
+
+  return (
+    <div className="mt-4">
+      <div
+        ref={containerRef}
+        className="relative aspect-video rounded-xl overflow-hidden bg-gray-100 select-none cursor-ew-resize"
+        onMouseDown={(e) => { dragging.current = true; updatePos(e.clientX) }}
+        onTouchStart={(e) => { dragging.current = true; updatePos(e.touches[0].clientX) }}
+        onTouchEnd={() => { dragging.current = false }}
+      >
+        <img src={back.src} alt={back.alt ?? ''} className="absolute inset-0 w-full h-full object-cover pointer-events-none" draggable={false} />
+        <img src={front.src} alt={front.alt ?? ''} className="absolute inset-0 w-full h-full object-cover pointer-events-none" draggable={false} style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }} />
+        <div className="absolute top-0 bottom-0 w-px bg-white/90 shadow-[0_0_6px_rgba(0,0,0,0.5)] pointer-events-none z-10" style={{ left: `${pos}%` }}>
+          <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-9 h-9 bg-white rounded-full shadow-xl flex items-center justify-center">
+            <ChevronsLeftRight size={15} strokeWidth={2.5} className="text-gray-600" />
+          </div>
+        </div>
+        {front.alt && <span className="absolute bottom-2 left-2 text-white text-xs font-medium bg-black/50 px-2 py-0.5 rounded pointer-events-none">{front.alt}</span>}
+        {back.alt && <span className="absolute bottom-2 right-2 text-white text-xs font-medium bg-black/50 px-2 py-0.5 rounded pointer-events-none text-right">{back.alt}</span>}
+      </div>
+      {pairCount > 1 && (
+        <div className="flex justify-center items-center gap-3 mt-2">
+          <button onClick={() => goTo((pairIdx - 1 + pairCount) % pairCount)} className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors" aria-label="Previous comparison">
+            <ChevronLeft size={16} strokeWidth={2.5} className="text-gray-500" />
+          </button>
+          <div className="flex gap-1.5">
+            {Array.from({ length: pairCount }).map((_, i) => (
+              <button key={i} onClick={() => goTo(i)} className={`w-2 h-2 rounded-full transition-colors ${i === pairIdx ? 'bg-gray-800' : 'bg-gray-300'}`} aria-label={`Comparison ${i + 1}`} />
+            ))}
+          </div>
+          <button onClick={() => goTo((pairIdx + 1) % pairCount)} className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors" aria-label="Next comparison">
+            <ChevronRight size={16} strokeWidth={2.5} className="text-gray-500" />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ChapterCard({ chapter }) {
+  const Icon = chapter.icon
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -24 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -24 }}
+      transition={{ duration: 0.4, ease: 'easeOut' }}
+      className="bg-white/90 backdrop-blur-md rounded-2xl shadow-xl p-6 border border-white/60 max-w-sm w-full"
+    >
+      {Icon && (
+        <>
+          <div
+            className="flex items-center justify-center w-10 h-10 rounded-full mb-3 shadow-sm"
+            style={{ backgroundColor: chapter.color ?? '#1e40af' }}
+          >
+            <Icon size={20} color="white" strokeWidth={2} />
+          </div>
+          {chapter.subtitle && (
+            <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: chapter.color ?? '#1e40af' }}>
+              {chapter.subtitle}
+            </p>
+          )}
+        </>
+      )}
+      <h2 className="text-xl font-bold text-gray-900 mb-3">{chapter.title}</h2>
+      <div className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none">
+        <ReactMarkdown components={MD_COMPONENTS}>{chapter.content}</ReactMarkdown>
+      </div>
+      {chapter.photos?.length > 0 && <PhotoSlider photos={chapter.photos} />}
+    </motion.div>
+  )
+}
+
+function TabBar({ activeTab, onTabChange, visible }) {
+  const tabs = [
+    { id: 'map', label: 'Map' },
+    { id: 'calendar', label: 'Calendar' },
+    { id: 'bookings', label: 'Bookings' },
+  ]
+  return (
+    <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 flex bg-white/90 backdrop-blur-md rounded-full shadow-xl border border-white/60 p-1 transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+      {tabs.map(tab => (
+        <button
+          key={tab.id}
+          onClick={() => onTabChange(tab.id)}
+          className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${
+            activeTab === tab.id
+              ? 'bg-gray-900 text-white shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function CalendarTab() {
+  return (
+    <div className="fixed inset-0 z-20 flex items-center justify-center pt-16 px-6">
+      <div className="bg-white/90 backdrop-blur-md rounded-2xl shadow-xl p-8 border border-white/60 max-w-lg w-full">
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Calendar</h2>
+        <p className="text-gray-400 text-sm">Trip dates and itinerary coming soon.</p>
+      </div>
+    </div>
+  )
+}
+
+function BookingsTab() {
+  return (
+    <div className="fixed inset-0 z-20 flex items-center justify-center pt-16 px-6">
+      <div className="bg-white/90 backdrop-blur-md rounded-2xl shadow-xl p-8 border border-white/60 max-w-lg w-full">
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Bookings</h2>
+        <p className="text-gray-400 text-sm">Reservations and booking links coming soon.</p>
+      </div>
+    </div>
+  )
+}
+
+function ReturnToStartButton({ visible, onReturn }) {
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.button
+          key="return-to-start"
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 24 }}
+          transition={{ duration: 0.4, ease: 'easeOut' }}
+          onClick={onReturn}
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-5 py-3 rounded-full shadow-xl font-semibold text-sm text-white tracking-wide bg-gray-900"
+          aria-label="Return to start"
+        >
+          <ArrowUp size={16} strokeWidth={2.5} />
+          Return to start
+        </motion.button>
+      )}
+    </AnimatePresence>
+  )
+}
+
+const LAST_CHAPTER_ID = CHAPTERS[CHAPTERS.length - 1].id
+const FIRST_CHAPTER_ID = CHAPTERS[0].id
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState('map')
+  const [activeChapterId, setActiveChapterId] = useState(CHAPTERS[0].id)
+  const [showReturnButton, setShowReturnButton] = useState(false)
+  const mapRef = useRef(null)
+  const isReturningRef = useRef(false)
+  const tracerAnimRef = useRef(null)
+  const [tabsVisible, setTabsVisible] = useState(true)
+
+  useEffect(() => {
+    const onScroll = () => setTabsVisible(window.scrollY < 50)
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  // Tron tracer animation for the ferry chapter
+  useEffect(() => {
+    if (activeChapterId !== 'ferry') {
+      if (tracerAnimRef.current) {
+        cancelAnimationFrame(tracerAnimRef.current)
+        tracerAnimRef.current = null
+      }
+      return
+    }
+
+    // Each pass: 6000ms travel + 800ms pause before looping
+    const TRAVEL = 6000
+    const PAUSE = 800
+    const CYCLE = TRAVEL + PAUSE
+    const startTime = performance.now()
+
+    const animate = (now) => {
+      const elapsed = (now - startTime) % CYCLE
+      const raw = Math.min(elapsed / TRAVEL, 1)
+      // ease-in-out quad
+      const t = raw < 0.5 ? 2 * raw * raw : -1 + (4 - 2 * raw) * raw
+      const coord = interpolateAlongLine(FERRY_ROUTE_COORDS, t)
+
+      const map = mapRef.current?.getMap()
+      const src = map?.getSource('ferry-point')
+      if (src) {
+        src.setData({ type: 'Feature', geometry: { type: 'Point', coordinates: coord } })
+      }
+
+      tracerAnimRef.current = requestAnimationFrame(animate)
+    }
+
+    tracerAnimRef.current = requestAnimationFrame(animate)
+    return () => {
+      if (tracerAnimRef.current) cancelAnimationFrame(tracerAnimRef.current)
+    }
+  }, [activeChapterId])
+
+  const handleStepEnter = useCallback(({ data }) => {
+    if (isReturningRef.current) {
+      if (data === FIRST_CHAPTER_ID) {
+        isReturningRef.current = false
+        setActiveChapterId(FIRST_CHAPTER_ID)
+      }
+      return
+    }
+    const chapter = CHAPTERS.find(c => c.id === data)
+    if (!chapter) return
+    setActiveChapterId(chapter.id)
+    if (chapter.id === LAST_CHAPTER_ID) {
+      setShowReturnButton(false)
+    }
+    if (mapRef.current) {
+      const states = chapter.mapStates
+      if (states?.length >= 2) {
+        const flyNext = (idx) => {
+          if (idx >= states.length) return
+          const s = states[idx]
+          mapRef.current?.flyTo({
+            center: [s.longitude, s.latitude],
+            zoom: s.zoom,
+            pitch: s.pitch ?? 0,
+            bearing: s.bearing ?? 0,
+            duration: idx === 0 ? 800 : 3000,
+            essential: true,
+          })
+          if (idx < states.length - 1) {
+            mapRef.current?.getMap().once('moveend', () => flyNext(idx + 1))
+          }
+        }
+        flyNext(0)
+      } else if (chapter.mapState) {
+        mapRef.current.flyTo({
+          center: [chapter.mapState.longitude, chapter.mapState.latitude],
+          zoom: chapter.mapState.zoom,
+          pitch: chapter.mapState.pitch ?? 0,
+          bearing: chapter.mapState.bearing ?? 0,
+          duration: 1800,
+          essential: true,
+        })
+      }
+    }
+  }, [])
+
+  const handleStepExit = useCallback(({ data, direction }) => {
+    if (data === LAST_CHAPTER_ID && direction === 'down') {
+      setShowReturnButton(true)
+    }
+    if (data === LAST_CHAPTER_ID && direction === 'up') {
+      setShowReturnButton(false)
+    }
+  }, [])
+
+  const handleReturn = useCallback(() => {
+    isReturningRef.current = true
+    setShowReturnButton(false)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [])
+
+  const activeChapter = CHAPTERS.find(c => c.id === activeChapterId) ?? CHAPTERS[0]
+
+  return (
+    <div className="relative">
+      <TabBar activeTab={activeTab} onTabChange={setActiveTab} visible={activeTab !== 'map' || tabsVisible} />
+
+      {activeTab === 'calendar' && <CalendarTab />}
+      {activeTab === 'bookings' && <BookingsTab />}
+
+      {/* Fixed full-screen map */}
+      <div className="fixed inset-0 z-0">
+        <Map
+          ref={mapRef}
+          mapboxAccessToken={MAPBOX_TOKEN}
+          initialViewState={CHAPTERS[0].mapState}
+          mapStyle="mapbox://styles/mapbox/outdoors-v12"
+          style={{ width: '100%', height: '100%' }}
+        >
+          {activeChapterId === 'ferry' && (
+            <>
+              {/* Tron glow track */}
+              <Source id="ferry-route" type="geojson" data={FERRY_ROUTE_GEOJSON}>
+                <Layer
+                  id="ferry-glow-outer"
+                  type="line"
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  paint={{ 'line-width': 28, 'line-color': '#00e5ff', 'line-opacity': 0.07, 'line-blur': 14 }}
+                />
+                <Layer
+                  id="ferry-glow-mid"
+                  type="line"
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  paint={{ 'line-width': 12, 'line-color': '#00e5ff', 'line-opacity': 0.2, 'line-blur': 5 }}
+                />
+                <Layer
+                  id="ferry-glow-inner"
+                  type="line"
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  paint={{ 'line-width': 5, 'line-color': '#00bcd4', 'line-opacity': 0.65 }}
+                />
+                <Layer
+                  id="ferry-core"
+                  type="line"
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  paint={{ 'line-width': 1.5, 'line-color': '#e0ffff', 'line-opacity': 0.95 }}
+                />
+              </Source>
+              {/* Moving point — updated imperatively each frame */}
+              <Source
+                id="ferry-point"
+                type="geojson"
+                data={{ type: 'Feature', geometry: { type: 'Point', coordinates: FERRY_ROUTE_COORDS[0] } }}
+              >
+                <Layer
+                  id="ferry-pt-halo-3"
+                  type="circle"
+                  paint={{ 'circle-radius': 28, 'circle-color': '#00e5ff', 'circle-opacity': 0.07, 'circle-blur': 1 }}
+                />
+                <Layer
+                  id="ferry-pt-halo-2"
+                  type="circle"
+                  paint={{ 'circle-radius': 14, 'circle-color': '#00bcd4', 'circle-opacity': 0.25 }}
+                />
+                <Layer
+                  id="ferry-pt-halo-1"
+                  type="circle"
+                  paint={{ 'circle-radius': 8, 'circle-color': '#00e5ff', 'circle-opacity': 0.55 }}
+                />
+                <Layer
+                  id="ferry-pt-core"
+                  type="circle"
+                  paint={{
+                    'circle-radius': 5,
+                    'circle-color': '#ffffff',
+                    'circle-opacity': 1,
+                    'circle-stroke-width': 2.5,
+                    'circle-stroke-color': '#00e5ff',
+                  }}
+                />
+              </Source>
+            </>
+          )}
+
+          {CHAPTERS.filter(c => c.marker).map(chapter => {
+            const Icon = chapter.icon
+            const isActive = activeChapterId === chapter.id
+            return (
+              <Marker
+                key={chapter.id}
+                longitude={chapter.marker.longitude}
+                latitude={chapter.marker.latitude}
+                anchor="center"
+              >
+                <div
+                  className="flex items-center justify-center w-9 h-9 rounded-full shadow-lg"
+                  style={{
+                    backgroundColor: chapter.color ?? '#1e40af',
+                    transform: isActive ? 'scale(1.3)' : 'scale(1)',
+                    transition: 'transform 0.3s ease',
+                  }}
+                >
+                  {Icon && <Icon size={17} color="white" strokeWidth={2.5} />}
+                </div>
+              </Marker>
+            )
+          })}
+        </Map>
+      </div>
+
+      {activeTab === 'map' && (
+        <>
+          <ReturnToStartButton visible={showReturnButton} onReturn={handleReturn} />
+
+          {/* Scrollytelling story track */}
+          <div className="relative z-30">
+            <div className="h-20" /> {/* clearance for tab bar */}
+            <Scrollama onStepEnter={handleStepEnter} onStepExit={handleStepExit} offset={0.5}>
+              {CHAPTERS.map((chapter) => (
+                <Step data={chapter.id} key={chapter.id}>
+                  <section className="min-h-screen flex items-center py-16 px-6 md:px-12">
+                    <AnimatePresence>
+                      {activeChapter.id === chapter.id &&
+                        (chapter.type === 'intro' ? (
+                          <IntroCard key={chapter.id} chapter={chapter} />
+                        ) : (
+                          <ChapterCard key={chapter.id} chapter={chapter} />
+                        ))}
+                    </AnimatePresence>
+                  </section>
+                </Step>
+              ))}
+            </Scrollama>
+            <div className="min-h-screen" />
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
