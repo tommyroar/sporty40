@@ -1,22 +1,12 @@
-name: Deploy Staging
+name: Build Check (PR)
 
 on:
   pull_request:
     branches:
       - main
-  workflow_dispatch:
-
-permissions:
-  contents: write
-  pull-requests: write
-  deployments: write
-
-concurrency:
-  group: "github-pages-staging"
-  cancel-in-progress: false
 
 jobs:
-  build-and-deploy:
+  build:
     if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -32,29 +22,16 @@ jobs:
         run: npm install
         working-directory: app
 
-      - name: Build SPA (staging)
-        run: npm run build -- --base=/sporty40/staging/ --outDir ../dist-staging/
+      - name: Lint
+        run: npm run lint
+        working-directory: app
+
+      - name: Test
+        run: npm test
+        working-directory: app
+
+      - name: Build
+        run: npm run build -- --base=/sporty40/
         working-directory: app
         env:
           VITE_MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
-
-      - name: Deploy to GitHub Pages (staging)
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./dist-staging
-          destination_dir: staging
-          publish_branch: gh-pages
-          keep_files: true
-
-      - name: Comment staging URL on PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v8
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '**Staging preview deployed:** https://tommyroar.github.io/sporty40/staging/'
-            })
