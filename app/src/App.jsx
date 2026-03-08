@@ -442,6 +442,17 @@ export default function App() {
     isReturningRef.current = true
     setShowReturnButton(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
+    const first = CHAPTERS[0]
+    if (mapRef.current && first.mapState) {
+      mapRef.current.flyTo({
+        center: [first.mapState.longitude, first.mapState.latitude],
+        zoom: first.mapState.zoom,
+        pitch: first.mapState.pitch ?? 0,
+        bearing: first.mapState.bearing ?? 0,
+        duration: 1800,
+        essential: true,
+      })
+    }
   }, [])
 
   const activeChapter = CHAPTERS.find(c => c.id === activeChapterId) ?? CHAPTERS[0]
