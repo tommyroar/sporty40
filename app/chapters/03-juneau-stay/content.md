@@ -14,6 +14,9 @@ mapState:
 marker:
   longitude: -134.565
   latitude: 58.390
+photos:
+  - src: hotel-exterior.jpg
+    alt: Best Western Grandma's Feather Bed
 ---
 
 We're staying at [Best Western Grandma's Feather Bed](https://www.bestwestern.com/en_US/book/hotels-in-juneau/best-western-grandma-s-feather-bed/propertyCode.02012.html) — a Victorian farmhouse inn tucked into Mendenhall Valley with only 14 rooms.
