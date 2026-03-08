@@ -2,7 +2,7 @@
 id: car
 type: chapter
 title: Out the Road
-subtitle: Why We're Bringing the Car
+subtitle: My truck
 icon: Car
 color: '#16a34a'
 mapState:
@@ -14,6 +14,9 @@ mapState:
 marker:
   longitude: -134.70
   latitude: 58.50
+photos:
+  - src: truck.jpg
+    alt: My truck
 ---
 
 Juneau has no road connections to the outside world — but it has about 50 miles of spectacular road to itself. Locals call driving north on Glacier Highway "going out the road," and having a car makes all of this ours.
