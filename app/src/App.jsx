@@ -282,6 +282,16 @@ export default function App() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
+  // Deep link: scroll to chapter on load if hash present
+  useEffect(() => {
+    const hash = window.location.hash.slice(1)
+    if (!hash) return
+    setTimeout(() => {
+      const el = document.getElementById(hash)
+      if (el) el.scrollIntoView({ behavior: 'instant' })
+    }, 100)
+  }, [])
+
   // Tron tracer animation for the ferry chapter
   useEffect(() => {
     if (activeChapterId !== 'ferry') {
@@ -325,12 +335,14 @@ export default function App() {
       if (data === FIRST_CHAPTER_ID) {
         isReturningRef.current = false
         setActiveChapterId(FIRST_CHAPTER_ID)
+        history.replaceState(null, '', `#${FIRST_CHAPTER_ID}`)
       }
       return
     }
     const chapter = CHAPTERS.find(c => c.id === data)
     if (!chapter) return
     setActiveChapterId(chapter.id)
+    history.replaceState(null, '', `#${chapter.id}`)
     if (chapter.id === LAST_CHAPTER_ID) {
       setShowReturnButton(false)
     }
@@ -500,7 +512,7 @@ export default function App() {
             <Scrollama onStepEnter={handleStepEnter} onStepExit={handleStepExit} offset={0.5}>
               {CHAPTERS.map((chapter) => (
                 <Step data={chapter.id} key={chapter.id}>
-                  <section className="min-h-screen flex items-center py-16 px-6 md:px-12">
+                  <section id={chapter.id} className="min-h-screen flex items-center py-16 px-6 md:px-12">
                     <AnimatePresence>
                       {activeChapter.id === chapter.id &&
                         (chapter.type === 'intro' ? (
