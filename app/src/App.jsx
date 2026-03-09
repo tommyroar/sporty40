@@ -8,6 +8,38 @@ import { CHAPTERS } from './chapters.js'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
 
+// Alaska Highway return route — Juneau (ferry) → Haines → Haines Jct → Whitehorse → Watson Lake → Cassiar Hwy → Prince George → Seattle
+const ALASKA_HWY_ROUTE_COORDS = [
+  [-134.65, 58.38], // Auke Bay terminal, Juneau
+  [-135.00, 58.65], // Lynn Canal heading north
+  [-135.20, 58.95], // continuing up Lynn Canal
+  [-135.44, 59.24], // Haines ferry terminal
+  [-135.89, 59.42], // Klukwan
+  [-136.50, 59.75], // Chilkat Pass
+  [-137.35, 60.50], // approaching Haines Junction
+  [-137.51, 60.76], // Haines Junction, YT
+  [-136.70, 60.74], // east on Alaska Highway
+  [-135.06, 60.72], // Whitehorse, YT
+  [-133.00, 60.35], // continuing east
+  [-128.71, 60.06], // Watson Lake, YT
+  [-129.42, 59.68], // Cassiar Hwy 37 junction
+  [-130.03, 58.43], // Dease Lake, BC
+  [-130.24, 57.50], // Bob Quinn Lake area
+  [-129.32, 56.08], // Meziadin Junction
+  [-128.08, 55.12], // Kitwanga — junction with Yellowhead Hwy 16
+  [-127.67, 54.78], // Smithers
+  [-122.75, 53.91], // Prince George
+  [-121.44, 49.38], // Hope, BC
+  [-122.30, 49.00], // Sumas/Abbotsford border crossing
+  [-122.48, 48.74], // Bellingham, WA
+  [-122.33, 47.61], // Seattle
+]
+
+const ALASKA_HWY_ROUTE_GEOJSON = {
+  type: 'Feature',
+  geometry: { type: 'LineString', coordinates: ALASKA_HWY_ROUTE_COORDS },
+}
+
 // Wings Airways seaplane — downtown Juneau to Taku Lodge
 const SEAPLANE_ROUTE_COORDS = [
   [-134.419, 58.301], // Wings Airways seaplane base, downtown Juneau
@@ -322,6 +354,7 @@ export default function App() {
   const isReturningRef = useRef(false)
   const tracerAnimRef = useRef(null)
   const seaplaneAnimRef = useRef(null)
+  const roadAnimRef = useRef(null)
   const [tabsVisible, setTabsVisible] = useState(true)
 
   useEffect(() => {
@@ -412,6 +445,43 @@ export default function App() {
     seaplaneAnimRef.current = requestAnimationFrame(animate)
     return () => {
       if (seaplaneAnimRef.current) cancelAnimationFrame(seaplaneAnimRef.current)
+    }
+  }, [activeChapterId])
+
+  // Tron tracer animation for the Alaska Highway road chapter
+  useEffect(() => {
+    if (activeChapterId !== 'alaska-highway') {
+      if (roadAnimRef.current) {
+        cancelAnimationFrame(roadAnimRef.current)
+        roadAnimRef.current = null
+      }
+      return
+    }
+
+    // Long 1800-mile drive: 14000ms travel + 1000ms pause per loop
+    const TRAVEL = 14000
+    const PAUSE = 1000
+    const CYCLE = TRAVEL + PAUSE
+    const startTime = performance.now()
+
+    const animate = (now) => {
+      const elapsed = (now - startTime) % CYCLE
+      const raw = Math.min(elapsed / TRAVEL, 1)
+      const t = raw < 0.5 ? 2 * raw * raw : -1 + (4 - 2 * raw) * raw
+      const coord = interpolateAlongLine(ALASKA_HWY_ROUTE_COORDS, t)
+
+      const map = mapRef.current?.getMap()
+      const src = map?.getSource('road-point')
+      if (src) {
+        src.setData({ type: 'Feature', geometry: { type: 'Point', coordinates: coord } })
+      }
+
+      roadAnimRef.current = requestAnimationFrame(animate)
+    }
+
+    roadAnimRef.current = requestAnimationFrame(animate)
+    return () => {
+      if (roadAnimRef.current) cancelAnimationFrame(roadAnimRef.current)
     }
   }, [activeChapterId])
 
@@ -631,6 +701,71 @@ export default function App() {
                     'circle-opacity': 1,
                     'circle-stroke-width': 2.5,
                     'circle-stroke-color': '#f59e0b',
+                  }}
+                />
+              </Source>
+            </>
+          )}
+
+          {activeChapterId === 'alaska-highway' && (
+            <>
+              {/* Road Tron glow track — orange */}
+              <Source id="road-route" type="geojson" data={ALASKA_HWY_ROUTE_GEOJSON}>
+                <Layer
+                  id="road-glow-outer"
+                  type="line"
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  paint={{ 'line-width': 28, 'line-color': '#f97316', 'line-opacity': 0.07, 'line-blur': 14 }}
+                />
+                <Layer
+                  id="road-glow-mid"
+                  type="line"
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  paint={{ 'line-width': 12, 'line-color': '#f97316', 'line-opacity': 0.2, 'line-blur': 5 }}
+                />
+                <Layer
+                  id="road-glow-inner"
+                  type="line"
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  paint={{ 'line-width': 5, 'line-color': '#fb923c', 'line-opacity': 0.65 }}
+                />
+                <Layer
+                  id="road-core"
+                  type="line"
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  paint={{ 'line-width': 1.5, 'line-color': '#fff7ed', 'line-opacity': 0.95 }}
+                />
+              </Source>
+              {/* Moving road point */}
+              <Source
+                id="road-point"
+                type="geojson"
+                data={{ type: 'Feature', geometry: { type: 'Point', coordinates: ALASKA_HWY_ROUTE_COORDS[0] } }}
+              >
+                <Layer
+                  id="road-pt-halo-3"
+                  type="circle"
+                  paint={{ 'circle-radius': 28, 'circle-color': '#f97316', 'circle-opacity': 0.07, 'circle-blur': 1 }}
+                />
+                <Layer
+                  id="road-pt-halo-2"
+                  type="circle"
+                  paint={{ 'circle-radius': 14, 'circle-color': '#fb923c', 'circle-opacity': 0.25 }}
+                />
+                <Layer
+                  id="road-pt-halo-1"
+                  type="circle"
+                  paint={{ 'circle-radius': 8, 'circle-color': '#f97316', 'circle-opacity': 0.55 }}
+                />
+                <Layer
+                  id="road-pt-core"
+                  type="circle"
+                  paint={{
+                    'circle-radius': 5,
+                    'circle-color': '#ffffff',
+                    'circle-opacity': 1,
+                    'circle-stroke-width': 2.5,
+                    'circle-stroke-color': '#f97316',
                   }}
                 />
               </Source>
